@@ -93,7 +93,11 @@ st.markdown(
 
 # ── Mode tabs ─────────────────────────────────────────────────────────────────
 
-tab_encode, tab_decode = st.tabs(["🔒  Encode — Hide a Message", "🔓  Decode — Extract a Message"])
+tab_encode, tab_decode, tab_code = st.tabs([
+    "🔒  Encode — Hide a Message",
+    "🔓  Decode — Extract a Message",
+    "💻  Source Code",
+])
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # ENCODE TAB
@@ -289,6 +293,243 @@ with tab_decode:
                 st.markdown(
                     f'<div class="error-box">✗ {result}</div>',
                     unsafe_allow_html=True)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SOURCE CODE TAB
+# ═══════════════════════════════════════════════════════════════════════════════
+
+with tab_code:
+
+    st.markdown("## 💻 Source Code")
+    st.markdown(
+        "This is the original **desktop application** code (built with Python + Tkinter) "
+        "that this web app is based on. The web version uses the same core logic.")
+
+    st.divider()
+
+    # ── Section 1: Constants & Imports ──────────────────────────────────────
+    st.markdown("### 📦 Imports & Constants")
+    st.markdown(
+        "We import **Pillow** for image handling and **Tkinter** for the desktop GUI. "
+        "The `TERMINATOR` is a sequence of 5 null bytes appended to the end of every "
+        "hidden message so the decoder knows where the message ends.")
+    st.code('''import os
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog
+from PIL import Image
+
+TERMINATOR = b\'\\x00\\x00\\x00\\x00\\x00\'  # 5 null bytes — safe end-of-message marker
+
+SUPPORTED_READ = {
+    ".bmp": "BMP", ".png": "PNG",
+    ".jpg": "JPEG", ".jpeg": "JPEG",
+    ".tiff": "TIFF", ".tif": "TIFF", ".webp": "WebP",
+}
+LOSSY_EXTS = {".jpg", ".jpeg"}''', language="python")
+
+    st.divider()
+
+    # ── Section 2: XOR Cipher ───────────────────────────────────────────────
+    st.markdown("### 🔑 XOR Encryption")
+    st.markdown(
+        "XOR encryption works by combining each byte of the message with a byte from "
+        "the password key. The same function is used to both **encrypt** and **decrypt** "
+        "— XORing twice with the same key restores the original data.")
+    st.code('''def xor_cipher(data: bytes, key: str) -> bytes:
+    """XOR-encrypt or decrypt raw bytes with a string key."""
+    if not key:
+        return data
+    key_bytes = key.encode("utf-8")
+    return bytes(b ^ key_bytes[i % len(key_bytes)] for i, b in enumerate(data))''',
+        language="python")
+
+    st.divider()
+
+    # ── Section 3: Capacity ─────────────────────────────────────────────────
+    st.markdown("### 📊 Capacity Calculation")
+    st.markdown(
+        "Each pixel has 3 colour channels (Red, Green, Blue). We hide **1 bit** in the "
+        "least significant bit (LSB) of each channel — so 3 bits per pixel. "
+        "Every 8 bits = 1 character, giving us `pixels × 3 ÷ 8` characters of capacity.")
+    st.code('''def get_max_chars(pixel_count: int) -> int:
+    usable_bytes = (pixel_count * 3) // 8
+    return usable_bytes - len(TERMINATOR)''', language="python")
+
+    st.divider()
+
+    # ── Section 4: Encode ───────────────────────────────────────────────────
+    st.markdown("### 🔒 Encode Function — Hiding the Message")
+    st.markdown(
+        "The encode function converts the message to binary, then writes each bit into "
+        "the **least significant bit** of each pixel channel value. Changing only the "
+        "last bit means the colour changes by at most 1 out of 255 — completely invisible to the eye.")
+    st.code('''def encode_image(image_path, secret_message, output_path, password=""):
+    # Load image pixels via Pillow
+    pixels, width, height = load_rgb_pixels(image_path)
+
+    # Optionally encrypt with XOR, then add terminator
+    raw = secret_message.encode("utf-8")
+    if password:
+        raw = xor_cipher(raw, password)
+    payload = raw + TERMINATOR
+
+    # Convert payload to a string of 1s and 0s
+    bits = "".join(format(byte, "08b") for byte in payload)
+
+    # Write each bit into the LSB of each pixel channel
+    for i, bit in enumerate(bits):
+        pixels[i] = (pixels[i] & 0xFE) | int(bit)
+    #              ↑ clears last bit     ↑ sets it to our bit
+
+    # Always save as PNG (lossless) to preserve the hidden bits
+    save_pixels_as_png(pixels, width, height, output_path)''', language="python")
+
+    st.divider()
+
+    # ── Section 5: Decode ───────────────────────────────────────────────────
+    st.markdown("### 🔓 Decode Function — Extracting the Message")
+    st.markdown(
+        "Decoding is the reverse: read the LSB from each pixel channel, collect 8 bits "
+        "at a time to form a byte, and keep going until the 5 null-byte terminator is found.")
+    st.code('''def decode_image(image_path, password=""):
+    pixels, width, height = load_rgb_pixels(image_path)
+
+    decoded = bytearray()
+    bits = []
+
+    for byte_val in pixels:
+        bits.append(byte_val & 1)      # extract the last bit
+        if len(bits) == 8:
+            decoded.append(int("".join(str(b) for b in bits), 2))
+            bits = []
+            # Stop as soon as we find the terminator
+            if decoded[-5:] == b\'\\x00\\x00\\x00\\x00\\x00\':
+                raw = bytes(decoded[:-5])
+                if password:
+                    raw = xor_cipher(raw, password)
+                return True, raw.decode("utf-8")
+
+    return False, "No hidden message found."''', language="python")
+
+    st.divider()
+
+    # ── Section 6: Full code expander ───────────────────────────────────────
+    st.markdown("### 📄 Full Desktop App Code")
+    st.markdown("Expand below to see the complete original source code including the Tkinter GUI.")
+
+    with st.expander("Click to show full code"):
+        st.code('''"""
+Image Steganography Tool
+Supports: PNG, BMP, TIFF, WebP  (lossless — data is preserved)
+          JPG / JPEG             (lossy — auto-converted to PNG before encoding)
+
+Requires: Pillow  →  pip install Pillow
+"""
+
+import os
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog
+from PIL import Image
+
+TERMINATOR = b\'\\x00\\x00\\x00\\x00\\x00\'
+
+SUPPORTED_READ = {
+    ".bmp": "BMP", ".png": "PNG",
+    ".jpg": "JPEG", ".jpeg": "JPEG",
+    ".tiff": "TIFF", ".tif": "TIFF", ".webp": "WebP",
+}
+LOSSLESS_EXTS = {".bmp", ".png", ".tiff", ".tif", ".webp"}
+LOSSY_EXTS    = {".jpg", ".jpeg"}
+
+
+def xor_cipher(data: bytes, key: str) -> bytes:
+    if not key:
+        return data
+    key_bytes = key.encode("utf-8")
+    return bytes(b ^ key_bytes[i % len(key_bytes)] for i, b in enumerate(data))
+
+
+def get_max_chars(pixel_count: int) -> int:
+    return (pixel_count * 3) // 8 - len(TERMINATOR)
+
+
+def detect_format(path: str):
+    ext = os.path.splitext(path)[1].lower()
+    if ext not in SUPPORTED_READ:
+        return None, False, f"Unsupported type: {ext}"
+    try:
+        with Image.open(path) as img:
+            img.verify()
+    except Exception as e:
+        return None, False, str(e)
+    return ext, ext in LOSSY_EXTS, None
+
+
+def load_rgb_pixels(path: str):
+    with Image.open(path) as img:
+        img = img.convert("RGB")
+        return bytearray(img.tobytes()), img.width, img.height
+
+
+def save_pixels_as_png(pixels, width, height, output_path):
+    img = Image.frombytes("RGB", (width, height), bytes(pixels))
+    img.save(output_path, format="PNG")
+
+
+def encode_image(image_path, secret_message, output_path, password=""):
+    ext, is_lossy, err = detect_format(image_path)
+    if err:
+        return False, err
+    pixels, width, height = load_rgb_pixels(image_path)
+    raw = secret_message.encode("utf-8")
+    if password:
+        raw = xor_cipher(raw, password)
+    payload = raw + TERMINATOR
+    bits = "".join(format(byte, "08b") for byte in payload)
+    for i, bit in enumerate(bits):
+        pixels[i] = (pixels[i] & 0xFE) | int(bit)
+    save_pixels_as_png(pixels, width, height, output_path)
+    return True, f"Encoded successfully! Saved to: {output_path}"
+
+
+def decode_image(image_path, password=""):
+    ext, _, err = detect_format(image_path)
+    if err:
+        return False, err
+    if ext in LOSSY_EXTS:
+        return False, "JPEG cannot be decoded."
+    pixels, _, _ = load_rgb_pixels(image_path)
+    decoded, bits = bytearray(), []
+    for byte_val in pixels:
+        bits.append(byte_val & 1)
+        if len(bits) == 8:
+            decoded.append(int("".join(str(b) for b in bits), 2))
+            bits = []
+            if decoded[-5:] == TERMINATOR:
+                raw = bytes(decoded[:-5])
+                if password:
+                    raw = xor_cipher(raw, password)
+                return True, raw.decode("utf-8")
+    return False, "No hidden message found."
+
+
+class SteganographyApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Image Steganography Tool")
+        self.root.geometry("660x660")
+        # ... (full GUI code) ...
+
+
+def main():
+    root = tk.Tk()
+    SteganographyApp(root)
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()
+''', language="python")
 
 # ── Footer ────────────────────────────────────────────────────────────────────
 
