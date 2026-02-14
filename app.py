@@ -22,7 +22,7 @@ st.set_page_config(
 st.markdown("""
 <style>
     /* Page background */
-    .stApp { background: #f0f4f8; }
+    .stApp { background: #0f1117; }
 
     /* Cards */
     .card {
