@@ -8,7 +8,6 @@ from PIL import Image
 import io
 import os
 from steg_core import encode, decode, get_max_chars, LOSSY_EXTS, SUPPORTED
-from unicode_steg import encode_text, decode_text, strip_invisible, has_hidden_message
 
 # ── Page config ───────────────────────────────────────────────────────────────
 
@@ -23,7 +22,7 @@ st.set_page_config(
 st.markdown("""
 <style>
     /* Page background */
-    .stApp { background: #0f0f0f; }
+    .stApp { background: #000000; }
 
     /* Cards */
     .card {
@@ -94,10 +93,9 @@ st.markdown(
 
 # ── Mode tabs ─────────────────────────────────────────────────────────────────
 
-tab_encode, tab_decode, tab_messenger, tab_code = st.tabs([
-    "🔒  Encode — Hide in Image",
-    "🔓  Decode — Extract from Image",
-    "💬  Messenger — Hide in Text",
+tab_encode, tab_decode, tab_code = st.tabs([
+    "🔒  Encode — Hide a Message",
+    "🔓  Decode — Extract a Message",
     "💻  Source Code",
 ])
 
@@ -295,197 +293,6 @@ with tab_decode:
                 st.markdown(
                     f'<div class="error-box">✗ {result}</div>',
                     unsafe_allow_html=True)
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# MESSENGER TAB — Unicode Steganography
-# ═══════════════════════════════════════════════════════════════════════════════
-
-with tab_messenger:
-
-    st.markdown("## 💬 Hide Messages Through Messenger")
-    st.markdown(
-        '<div class="info-box" style="background:#bee3f8;border-left:4px solid #3182ce;'
-        'border-radius:8px;padding:10px 14px;color:#2a4365;font-size:0.88rem;margin-bottom:16px">'
-        '👻 This method uses <strong>invisible Unicode characters</strong> hidden inside normal text. '
-        'It survives Messenger, WhatsApp, Telegram and any chat app — '
-        'because text is never compressed like images are.'
-        '</div>',
-        unsafe_allow_html=True)
-
-    msg_tab_encode, msg_tab_decode = st.tabs([
-        "✉️  Hide a message in text",
-        "🔍  Extract a message from text",
-    ])
-
-    # ── Encode sub-tab ───────────────────────────────────────────────────────
-    with msg_tab_encode:
-
-        st.markdown("### Step 1 — Write a normal cover sentence")
-        st.markdown(
-            '<p style="color:#718096;font-size:0.85rem">This is the innocent-looking text '
-            'your friend will receive. Make it sound natural — '
-            'e.g. <em>"Hey! How are you doing today?"</em></p>',
-            unsafe_allow_html=True)
-
-        cover = st.text_area(
-            "Cover text",
-            placeholder='e.g. "Hey! How are you doing today?"',
-            height=90,
-            key="cover_input",
-            label_visibility="collapsed",
-        )
-
-        st.markdown("### Step 2 — Type your secret message")
-        st.markdown(
-            '<p style="color:#718096;font-size:0.85rem">'
-            'This is completely hidden — invisible to anyone reading the chat.</p>',
-            unsafe_allow_html=True)
-
-        secret = st.text_area(
-            "Secret message",
-            placeholder="The actual message you want to hide...",
-            height=110,
-            key="secret_input",
-            label_visibility="collapsed",
-        )
-
-        st.markdown("### Step 3 — Password *(optional)*")
-        msg_pwd = st.text_input(
-            "Password",
-            type="password",
-            placeholder="Leave blank for no encryption",
-            key="msg_enc_pwd",
-            label_visibility="collapsed",
-        )
-
-        st.markdown("### Step 4 — Generate & Copy")
-
-        if st.button("✉️  Generate Hidden Message", type="primary",
-                     use_container_width=True, key="gen_btn"):
-
-            if not cover.strip():
-                st.markdown(
-                    '<div class="error-box">✗ Please write a cover sentence first.</div>',
-                    unsafe_allow_html=True)
-            elif not secret.strip():
-                st.markdown(
-                    '<div class="error-box">✗ Please type a secret message.</div>',
-                    unsafe_allow_html=True)
-            else:
-                success, result = encode_text(cover.strip(), secret.strip(), msg_pwd)
-                if success:
-                    st.markdown(
-                        '<div class="success-box">✓ Secret message hidden successfully! '
-                        'Copy the text below and send it on Messenger.</div>',
-                        unsafe_allow_html=True)
-
-                    st.markdown("#### 📋 Send this text on Messenger:")
-                    st.text_area(
-                        "Result",
-                        value=result,
-                        height=90,
-                        key="result_output",
-                        label_visibility="collapsed",
-                        help="Copy this entire text and paste it into Messenger",
-                    )
-
-                    st.markdown(
-                        '<div class="info-box" style="background:#c6f6d5;border-left:4px solid'
-                        ' #38a169;border-radius:8px;padding:10px 14px;color:#22543d;'
-                        'font-size:0.84rem;margin-top:8px">'
-                        '👆 Select all the text above and copy it. '
-                        'It looks identical to your cover sentence — '
-                        'the hidden message is completely invisible. '
-                        'Your friend pastes it into the Decode tab to read it.'
-                        '</div>',
-                        unsafe_allow_html=True)
-
-                    # Show character stats
-                    visible = strip_invisible(result)
-                    hidden_chars = len(result) - len(visible)
-                    col1, col2, col3 = st.columns(3)
-                    col1.metric("Visible characters", len(visible))
-                    col2.metric("Hidden characters", hidden_chars)
-                    col3.metric("Secret message length", len(secret.strip()))
-
-                else:
-                    st.markdown(
-                        f'<div class="error-box">✗ {result}</div>',
-                        unsafe_allow_html=True)
-
-    # ── Decode sub-tab ───────────────────────────────────────────────────────
-    with msg_tab_decode:
-
-        st.markdown("### Step 1 — Paste the message from Messenger")
-        st.markdown(
-            '<p style="color:#718096;font-size:0.85rem">'
-            'Copy the entire message your friend sent and paste it here. '
-            'It will look like normal text.</p>',
-            unsafe_allow_html=True)
-
-        pasted = st.text_area(
-            "Paste text here",
-            placeholder="Paste the message received from Messenger here...",
-            height=110,
-            key="paste_input",
-            label_visibility="collapsed",
-        )
-
-        if pasted:
-            if has_hidden_message(pasted):
-                st.markdown(
-                    '<div class="info-box" style="background:#c6f6d5;border-left:4px solid'
-                    ' #38a169;border-radius:8px;padding:8px 14px;color:#22543d;'
-                    'font-size:0.84rem">✓ Hidden message detected in this text!</div>',
-                    unsafe_allow_html=True)
-            else:
-                st.markdown(
-                    '<div class="warn-box">⚠ No hidden message marker detected. '
-                    'Make sure you copied the full message.</div>',
-                    unsafe_allow_html=True)
-
-        st.markdown("### Step 2 — Password *(if one was used)*")
-        msg_dec_pwd = st.text_input(
-            "Password",
-            type="password",
-            placeholder="Leave blank if no password was set",
-            key="msg_dec_pwd",
-            label_visibility="collapsed",
-        )
-
-        st.markdown("### Step 3 — Extract")
-
-        if st.button("🔍  Extract Hidden Message", type="primary",
-                     use_container_width=True, key="extract_btn"):
-
-            if not pasted.strip():
-                st.markdown(
-                    '<div class="error-box">✗ Please paste a message first.</div>',
-                    unsafe_allow_html=True)
-            else:
-                success, result = decode_text(pasted, msg_dec_pwd)
-                if success:
-                    st.markdown(
-                        '<div class="success-box">✓ Hidden message extracted!</div>',
-                        unsafe_allow_html=True)
-                    st.markdown("#### 🔓 Secret Message:")
-                    st.text_area(
-                        "Decoded",
-                        value=result,
-                        height=120,
-                        key="decoded_msg",
-                        label_visibility="collapsed",
-                    )
-                    st.download_button(
-                        "⬇  Save as .txt",
-                        data=result.encode("utf-8"),
-                        file_name="secret_message.txt",
-                        mime="text/plain",
-                    )
-                else:
-                    st.markdown(
-                        f'<div class="error-box">✗ {result}</div>',
-                        unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # SOURCE CODE TAB
